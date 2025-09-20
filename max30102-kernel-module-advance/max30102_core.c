@@ -268,6 +268,6 @@ struct attribute_group max30102_attr_group = {
 
 module_i2c_driver(max30102_driver);
 
-MODULE_AUTHOR("Your Name");
+MODULE_AUTHOR("Nguyen Nhan");
 MODULE_DESCRIPTION("MAX30102 Sensor Kernel Module with Enhanced Features");
 MODULE_LICENSE("GPL");
