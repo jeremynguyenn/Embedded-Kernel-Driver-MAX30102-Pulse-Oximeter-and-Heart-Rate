@@ -1,0 +1,23 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "brcm,bcm2711";
+
+    fragment@0 {
+        target = <&i2c1>;
+        __overlay__ {
+            status = "okay";
+
+            max30102: max30102@57 {
+                compatible = "maxim,max30102";
+                reg = <0x57>;
+                int-gpios = <&gpio 17 0>;
+                led1-current-mA = <6>;  // Added: Default LED currents
+                led2-current-mA = <6>;
+                interrupt-parent = <&gpio>;
+                interrupts = <17 IRQ_TYPE_EDGE_FALLING>;  // Improved interrupt spec
+            };
+        };
+    };
+};
