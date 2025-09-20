@@ -12,7 +12,7 @@
 int max30102_write_reg(struct max30102_data *data, uint8_t reg, uint8_t *buf, uint16_t len)
 {
     struct i2c_msg msg;
-    uint8_t send_buf[32 + 1];
+    uint8_t send_buf[32 + 1] = {0}; /* Initialize to zero for safety */
     int ret;
 
     if (len > 32) {

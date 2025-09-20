@@ -34,7 +34,7 @@ int max30102_read_fifo(struct max30102_data *data, uint32_t *red, uint32_t *ir, 
  */
 int max30102_read_temperature(struct max30102_data *data, float *temp)
 {
-    uint8_t temp_int, temp_frac;
+    uint8_t temp_int = 0, temp_frac = 0;
     int ret;
 
     ret = max30102_write_reg(data, MAX30102_REG_DIE_TEMP_CONFIG, &(uint8_t){0x01}, 1);
@@ -43,7 +43,7 @@ int max30102_read_temperature(struct max30102_data *data, float *temp)
         return ret;
     }
 
-    msleep(100);
+    msleep(100); /* Wait for temperature conversion (per datasheet) */
 
     ret = max30102_read_reg(data, MAX30102_REG_DIE_TEMP_INTEGER, &temp_int, 1);
     if (ret) {

@@ -7,6 +7,8 @@
 #include <linux/gpio/consumer.h>
 #include <linux/miscdevice.h>
 #include <linux/device.h>
+#include <linux/types.h>
+#include <linux/fs.h>
 
 /* MAX30102 Register Definitions */
 #define MAX30102_ADDRESS                0x57
@@ -72,18 +74,43 @@ struct max30102_data {
     bool fifo_full;
 };
 
+/* File operations for the MAX30102 device */
 extern const struct file_operations max30102_fops;
+
+/* Workqueue handler for interrupt processing */
 extern void max30102_work_handler(struct work_struct *work);
+
+/* IRQ handler for MAX30102 interrupts */
 extern irqreturn_t max30102_irq_handler(int irq, void *dev_id);
+
+/* Write to MAX30102 register */
 extern int max30102_write_reg(struct max30102_data *data, uint8_t reg, uint8_t *buf, uint16_t len);
+
+/* Read from MAX30102 register */
 extern int max30102_read_reg(struct max30102_data *data, uint8_t reg, uint8_t *buf, uint16_t len);
+
+/* Initialize MAX30102 sensor */
 extern int max30102_init_sensor(struct max30102_data *data);
+
+/* Set MAX30102 operating mode */
 extern int max30102_set_mode(struct max30102_data *data, uint8_t mode);
+
+/* Configure MAX30102 LED slot */
 extern int max30102_set_slot(struct max30102_data *data, uint8_t slot, uint8_t led);
+
+/* Enable/disable MAX30102 interrupt */
 extern int max30102_set_interrupt(struct max30102_data *data, uint8_t interrupt, bool enable);
+
+/* Read FIFO data (Red and IR samples) */
 extern int max30102_read_fifo(struct max30102_data *data, uint32_t *red, uint32_t *ir, uint8_t *len);
+
+/* Read die temperature */
 extern int max30102_read_temperature(struct max30102_data *data, float *temp);
+
+/* Configure FIFO settings */
 extern int max30102_set_fifo_config(struct max30102_data *data, uint8_t config);
+
+/* Configure SpO2 settings */
 extern int max30102_set_spo2_config(struct max30102_data *data, uint8_t config);
 
 /* Sysfs Attributes */

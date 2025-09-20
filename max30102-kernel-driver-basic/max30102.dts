@@ -12,7 +12,7 @@
             max30102: max30102@57 {
                 compatible = "maxim,max30102";
                 reg = <0x57>;
-                int-gpios = <&gpio 17 0>;
+                int-gpios = <&gpio 17 0>; /* GPIO17, active-high; verify polarity */
             };
         };
     };

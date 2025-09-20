@@ -1,4 +1,5 @@
 #include <linux/workqueue.h>
+#include <linux/slab.h>
 #include "max30102.h"
 
 /**
@@ -8,14 +9,14 @@
 void max30102_work_handler(struct work_struct *work)
 {
     struct max30102_data *data = container_of(work, struct max30102_data, work);
-    uint8_t status1, status2, write_ptr, read_ptr;
+    uint8_t status1 = 0, status2 = 0, write_ptr = 0, read_ptr = 0;
     uint8_t len;
-    uint8_t *fifo_data;
+    uint8_t *fifo_data = NULL;
     int ret;
 
     mutex_lock(&data->lock);
 
-    ret = max30102_read_reg(data, MAX30102_REG_INTERRUPT_STATUS_1, &status1, 1) ||
+    ret = max30102_read_reg(data, MAX30102_REG_INTERRUPT_STATUS_1, &status1, 1) |
           max30102_read_reg(data, MAX30102_REG_INTERRUPT_STATUS_2, &status2, 1);
     if (ret) {
         dev_err(&data->client->dev, "Failed to read interrupt status: %d\n", ret);
@@ -23,7 +24,7 @@ void max30102_work_handler(struct work_struct *work)
     }
 
     if (status1 & (1 << MAX30102_INT_FIFO_FULL)) {
-        ret = max30102_read_reg(data, MAX30102_REG_FIFO_WRITE_POINTER, &write_ptr, 1) ||
+        ret = max30102_read_reg(data, MAX30102_REG_FIFO_WRITE_POINTER, &write_ptr, 1) |
               max30102_read_reg(data, MAX30102_REG_FIFO_READ_POINTER, &read_ptr, 1);
         if (ret) {
             dev_err(&data->client->dev, "Failed to read FIFO pointers: %d\n", ret);

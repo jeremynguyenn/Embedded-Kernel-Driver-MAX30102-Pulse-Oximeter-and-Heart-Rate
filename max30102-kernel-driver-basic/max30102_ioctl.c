@@ -71,11 +71,6 @@ static long max30102_ioctl(struct file *file, unsigned int cmd, unsigned long ar
             ret = -EFAULT;
             goto unlock;
         }
-        if (slot_config.slot < 1 || slot_config.slot > 4 || slot_config.led > 2) {
-            dev_err(&data->client->dev, "Invalid slot=%d or led=%d\n", slot_config.slot, slot_config.led);
-            ret = -EINVAL;
-            goto unlock;
-        }
         ret = max30102_set_slot(data, slot_config.slot, slot_config.led);
         break;
 
@@ -102,8 +97,6 @@ static long max30102_ioctl(struct file *file, unsigned int cmd, unsigned long ar
         ret = -ENOTTY;
         goto unlock;
     }
-
-    ret = 0;
 
 unlock:
     mutex_unlock(&data->lock);

@@ -16,7 +16,7 @@ int max30102_init_sensor(struct max30102_data *data)
     ret = max30102_write_reg(data, MAX30102_REG_MODE_CONFIG, &value, 1);
     if (ret)
         return ret;
-    msleep(100);
+    msleep(100); /* Wait for reset completion (per datasheet) */
 
     /* Configure FIFO: sample averaging = 8, rollover enabled */
     value = 0x80;
@@ -38,7 +38,7 @@ int max30102_init_sensor(struct max30102_data *data)
 
     /* Set LED pulse amplitudes */
     value = 0x1F;
-    ret = max30102_write_reg(data, MAX30102_REG_LED_PULSE_1, &value, 1) ||
+    ret = max30102_write_reg(data, MAX30102_REG_LED_PULSE_1, &value, 1) |
           max30102_write_reg(data, MAX30102_REG_LED_PULSE_2, &value, 1);
     if (ret)
         return ret;

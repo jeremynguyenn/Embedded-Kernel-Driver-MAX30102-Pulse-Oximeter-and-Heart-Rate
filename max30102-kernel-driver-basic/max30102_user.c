@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <stdint.h>
 
 #define MAX30102_IOC_MAGIC 'k'
 #define MAX30102_IOC_READ_FIFO      _IOR(MAX30102_IOC_MAGIC, 0, struct max30102_fifo_data)
@@ -13,14 +14,14 @@
 #define MAX30102_IOC_SET_SPO2_CONFIG _IOW(MAX30102_IOC_MAGIC, 5, uint8_t)
 
 struct max30102_fifo_data {
-    unsigned int red[32];
-    unsigned int ir[32];
-    unsigned char len;
+    uint32_t red[32];
+    uint32_t ir[32];
+    uint8_t len;
 };
 
 struct max30102_slot_config {
-    unsigned char slot;
-    unsigned char led;
+    uint8_t slot;
+    uint8_t led;
 };
 
 int main(void)
@@ -34,7 +35,7 @@ int main(void)
     struct max30102_fifo_data fifo_data;
     float temp;
     uint8_t mode = 0x03; /* SpO2 mode */
-    struct max30102_slot_config slot_config = { .slot = 1, .led = 2 }; /* Slot 2: IR LED */
+    struct max30102_slot_config slot_config = { .slot = 1, .led = 2 }; /* Slot 1: IR LED */
     uint8_t fifo_config = 0x40; /* Sample averaging = 4, rollover enabled */
     uint8_t spo2_config = 0x43; /* ADC range 16384, 50Hz, 18-bit */
 
@@ -90,6 +91,9 @@ int main(void)
     }
     printf("Temperature: %.4f°C\n", temp);
 
-    close(fd);
+    if (close(fd) < 0) {
+        perror("Failed to close device");
+        return 1;
+    }
     return 0;
 }

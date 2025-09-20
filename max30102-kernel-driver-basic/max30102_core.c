@@ -4,6 +4,7 @@
 #include <linux/miscdevice.h>
 #include <linux/of_device.h>
 #include <linux/pm.h>
+#include <linux/string.h>
 #include "max30102.h"
 
 /**
@@ -152,6 +153,7 @@ static struct i2c_driver max30102_driver = {
     .remove = max30102_remove,
     .id_table = max30102_id,
 };
+
 static ssize_t temperature_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
     struct max30102_data *data = i2c_get_clientdata(to_i2c_client(dev));
@@ -166,7 +168,7 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 {
     struct max30102_data *data = i2c_get_clientdata(to_i2c_client(dev));
     uint8_t status1, status2;
-    int ret = max30102_read_reg(data, MAX30102_REG_INTERRUPT_STATUS_1, &status1, 1) ||
+    int ret = max30102_read_reg(data, MAX30102_REG_INTERRUPT_STATUS_1, &status1, 1) |
               max30102_read_reg(data, MAX30102_REG_INTERRUPT_STATUS_2, &status2, 1);
     if (ret)
         return ret;
