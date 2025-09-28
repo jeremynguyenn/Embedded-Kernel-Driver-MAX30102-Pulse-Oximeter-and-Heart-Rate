@@ -4,9 +4,10 @@
 #include <linux/miscdevice.h>
 #include <linux/of_device.h>
 #include <linux/pm.h>
-#include <linux/fs.h>  // For file ops
-#include <linux/uaccess.h>  // For copy
-#include <linux/debugfs.h>  // Added
+#include <linux/fs.h>
+#include <linux/uaccess.h>
+#include <linux/debugfs.h>
+#include <linux/compat.h>  // Added for compat_ioctl
 #include "max30102.h"
 
 /**
@@ -54,6 +55,14 @@ static int max30102_probe(struct i2c_client *client, const struct i2c_device_id 
         return ret;
     }
 
+    data->reset_gpio = devm_gpiod_get(&client->dev, "reset", GPIOD_OUT_HIGH);  // Added reset GPIO
+    if (IS_ERR(data->reset_gpio)) {
+        ret = PTR_ERR(data->reset_gpio);
+        dev_err(&client->dev, "Failed to get reset GPIO: %d\n", ret);
+        misc_deregister(&data->miscdev);
+        return ret;
+    }
+
     ret = gpiod_to_irq(data->irq_gpio);
     if (ret < 0) {
         dev_err(&client->dev, "Failed to get IRQ number: %d\n", ret);
@@ -75,10 +84,9 @@ static int max30102_probe(struct i2c_client *client, const struct i2c_device_id 
         return ret;
     }
 
-    // Added debugfs
     data->debug_dir = debugfs_create_dir("max30102", NULL);
     if (data->debug_dir) {
-        debugfs_create_u8("status1", 0444, data->debug_dir, (u8 *)data);  // Example
+        debugfs_create_u8("status1", 0444, data->debug_dir, (u8 *)data);
     }
 
     ret = max30102_init_sensor(data);
@@ -115,7 +123,7 @@ static void max30102_remove(struct i2c_client *client)
 static int max30102_suspend(struct device *dev)
 {
     struct max30102_data *data = i2c_get_clientdata(to_i2c_client(dev));
-    uint8_t value = 0x80;  // SHDN = 1 (improved from datasheet)
+    uint8_t value = 0x80;
     int ret = max30102_write_reg(data, MAX30102_REG_MODE_CONFIG, &value, 1);
     if (ret)
         dev_err(dev, "Failed to suspend device: %d\n", ret);
@@ -135,11 +143,6 @@ static int max30102_resume(struct device *dev)
         dev_err(dev, "Failed to resume device: %d\n", ret);
     return ret;
 }
-
-static const struct dev_pm_ops max30102_pm_ops = {
-    .suspend = max30102_suspend,
-    .resume = max30102_resume,
-};
 
 static const struct i2c_device_id max30102_id[] = {
     { "max30102", 0 },
@@ -164,7 +167,7 @@ static struct i2c_driver max30102_driver = {
     .id_table = max30102_id,
 };
 
-// Added file operations
+// File operations
 static ssize_t max30102_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
     struct max30102_data *data = file->private_data;
@@ -172,9 +175,9 @@ static ssize_t max30102_read(struct file *file, char __user *buf, size_t count, 
     int ret;
 
     if (file->f_flags & O_NONBLOCK) {
-        if (!data->fifo_full) return -EAGAIN;  // Non-blocking
+        if (!data->fifo_full) return -EAGAIN;
     } else {
-        wait_event_interruptible(data->wait_data_ready, data->fifo_full);  // Blocking
+        wait_event_interruptible(data->wait_data_ready, data->fifo_full);
     }
 
     ret = max30102_read_fifo(data, fifo_data.red, fifo_data.ir, &fifo_data.len);
@@ -192,22 +195,35 @@ static ssize_t max30102_write(struct file *file, const char __user *buf, size_t 
     uint8_t config;
     if (count != sizeof(uint8_t)) return -EINVAL;
     if (copy_from_user(&config, buf, sizeof(uint8_t))) return -EFAULT;
-    return max30102_set_mode(data, config);  // Example write for mode
+    return max30102_set_mode(data, config);
 }
 
 static loff_t max30102_llseek(struct file *file, loff_t offset, int whence)
 {
-    // Simple lseek demo, not really needed but added
     return fixed_size_llseek(file, offset, whence, sizeof(struct max30102_fifo_data));
+}
+
+static unsigned int max30102_poll(struct file *file, struct poll_table_struct *wait)
+{
+    struct max30102_data *data = file->private_data;
+    unsigned int revents = 0;
+
+    poll_wait(file, &data->wait_data_ready, wait);
+    if (data->fifo_full)
+        revents |= POLLIN | POLLRDNORM;
+
+    return revents;
 }
 
 const struct file_operations max30102_fops = {
     .owner = THIS_MODULE,
     .open = max30102_open,
     .unlocked_ioctl = max30102_ioctl,
+    .compat_ioctl = max30102_compat_ioctl,  // Added
     .read = max30102_read,
     .write = max30102_write,
     .llseek = max30102_llseek,
+    .poll = max30102_poll,  // Added
 };
 
 static ssize_t temperature_show(struct device *dev, struct device_attribute *attr, char *buf)
@@ -231,7 +247,6 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
     return sprintf(buf, "Status1: 0x%02x, Status2: 0x%02x\n", status1, status2);
 }
 
-// Added new sysfs: LED current
 static ssize_t led_current_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
     struct max30102_data *data = i2c_get_clientdata(to_i2c_client(dev));
@@ -253,7 +268,7 @@ static ssize_t led_current_store(struct device *dev, struct device_attribute *at
 
 static DEVICE_ATTR_RO(temperature);
 static DEVICE_ATTR_RO(status);
-static DEVICE_ATTR_RW(led_current);  // New
+static DEVICE_ATTR_RW(led_current);
 
 static struct attribute *max30102_attrs[] = {
     &dev_attr_temperature.attr,

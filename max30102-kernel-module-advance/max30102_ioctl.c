@@ -1,4 +1,5 @@
 #include <linux/uaccess.h>
+#include <linux/compat.h>  // Added for compat_ioctl
 #include "max30102.h"
 
 /**
@@ -110,4 +111,16 @@ static long max30102_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 unlock:
     mutex_unlock(&data->lock);
     return ret;
+}
+
+/**
+ * max30102_compat_ioctl - Compatibility IOCTL handler for 32-bit apps on 64-bit kernel
+ * @file: File structure
+ * @cmd: IOCTL command
+ * @arg: Argument from user space
+ * Returns: 0 on success, negative error code on failure
+ */
+static long max30102_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+    return max30102_ioctl(file, cmd, arg);  // Same implementation as unlocked_ioctl
 }

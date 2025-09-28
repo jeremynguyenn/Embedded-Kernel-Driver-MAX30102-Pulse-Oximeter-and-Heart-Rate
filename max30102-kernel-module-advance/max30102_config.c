@@ -11,18 +11,29 @@ int max30102_init_sensor(struct max30102_data *data)
     uint8_t value;
     int ret;
 
-    /* Reset the sensor */
+    /* Hardware reset using GPIO */
+    if (data->reset_gpio) {
+        gpiod_set_value(data->reset_gpio, 0);  // Assert reset (active low)
+        msleep(10);  // Hold reset for 10ms
+        gpiod_set_value(data->reset_gpio, 1);  // Release reset
+        msleep(100);  // Wait for device to stabilize as per datasheet
+    }
+
+    /* Software reset */
     value = 0x40;
     ret = max30102_write_reg(data, MAX30102_REG_MODE_CONFIG, &value, 1);
     if (ret)
         return ret;
     msleep(100);  // Wait for reset as per datasheet
 
-    // Clear FIFO pointers (improvement)
+    /* Clear FIFO pointers */
     value = 0x00;
-    max30102_write_reg(data, MAX30102_REG_FIFO_WRITE_POINTER, &value, 1);
-    max30102_write_reg(data, MAX30102_REG_FIFO_READ_POINTER, &value, 1);
-    max30102_write_reg(data, MAX30102_REG_OVERFLOW_COUNTER, &value, 1);
+    ret = max30102_write_reg(data, MAX30102_REG_FIFO_WRITE_POINTER, &value, 1);
+    if (ret) return ret;
+    ret = max30102_write_reg(data, MAX30102_REG_FIFO_READ_POINTER, &value, 1);
+    if (ret) return ret;
+    ret = max30102_write_reg(data, MAX30102_REG_OVERFLOW_COUNTER, &value, 1);
+    if (ret) return ret;
 
     /* Configure FIFO: sample averaging = 8, rollover enabled, A_FULL = 0 */
     value = 0x80;  // SMP_AVE = 010 (8), FIFO_ROLLOVER_EN = 1
@@ -59,7 +70,7 @@ int max30102_init_sensor(struct max30102_data *data)
     if (ret)
         return ret;
 
-    /* Enable FIFO full and PPG ready interrupts (improved: add PPG_RDY) */
+    /* Enable FIFO full and PPG ready interrupts */
     value = 0xC0;  // A_FULL_EN = 1, PPG_RDY_EN = 1
     ret = max30102_write_reg(data, MAX30102_REG_INTERRUPT_ENABLE_1, &value, 1);
     if (ret)
@@ -92,7 +103,7 @@ int max30102_set_mode(struct max30102_data *data, uint8_t mode)
  */
 int max30102_set_slot(struct max30102_data *data, uint8_t slot, uint8_t led)
 {
-    if (slot < 1 || slot > 4 || led > 3) {  // Updated: LED up to 3 as per datasheet (Green not present, but future-proof)
+    if (slot < 1 || slot > 4 || led > 3) {
         dev_err(&data->client->dev, "Invalid slot=%d or led=%d\n", slot, led);
         return -EINVAL;
     }
@@ -142,7 +153,7 @@ int max30102_set_interrupt(struct max30102_data *data, uint8_t interrupt, bool e
  */
 int max30102_set_fifo_config(struct max30102_data *data, uint8_t config)
 {
-    if (config & ~0xFF) {  // Full 8 bits, but validate SMP_AVE (0-7), etc. from datasheet
+    if (config & ~0xFF) {
         dev_err(&data->client->dev, "Invalid FIFO config: 0x%02x\n", config);
         return -EINVAL;
     }
@@ -157,14 +168,13 @@ int max30102_set_fifo_config(struct max30102_data *data, uint8_t config)
  */
 int max30102_set_spo2_config(struct max30102_data *data, uint8_t config)
 {
-    if (config & ~0x7F) { /* Check valid bits */
+    if (config & ~0x7F) {
         dev_err(&data->client->dev, "Invalid SpO2 config: 0x%02x\n", config);
         return -EINVAL;
     }
-    // Additional validation: Sample rate must match pulse width (from datasheet)
     uint8_t pw = config & 0x03;
     uint8_t sr = (config >> 2) & 0x07;
-    if ((pw == 0 && sr > 4) || (pw == 1 && sr > 6)) {  // Example check
+    if ((pw == 0 && sr > 4) || (pw == 1 && sr > 6)) {
         dev_err(&data->client->dev, "Invalid SR/PW combination\n");
         return -EINVAL;
     }

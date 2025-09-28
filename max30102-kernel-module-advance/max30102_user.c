@@ -3,11 +3,12 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
-#include <signal.h>  // Added for signals
-#include <pthread.h>  // Added for threads
-#include <mqueue.h>  // Added for POSIX message queue
-#include <sys/wait.h>  // For wait()
-#include <string.h>  // For memcpy
+#include <signal.h>
+#include <pthread.h>
+#include <mqueue.h>
+#include <sys/wait.h>
+#include <string.h>
+#include <poll.h>  // Added for poll()
 
 #define MAX30102_IOC_MAGIC 'k'
 #define MAX30102_IOC_READ_FIFO      _IOR(MAX30102_IOC_MAGIC, 0, struct max30102_fifo_data)
@@ -40,23 +41,38 @@ static void signal_handler(int sig) {
     printf("Signal %d received, stopping...\n", sig);
 }
 
+// Poll function
+static unsigned int max30102_poll(struct file *file, struct pollfd *pfd)
+{
+    struct max30102_data *data = file->private_data;
+    unsigned int revents = 0;
+
+    if (data->fifo_full)
+        revents |= POLLIN | POLLRDNORM;
+
+    return revents;
+}
+
 // Thread function to read FIFO continuously
 void *fifo_thread(void *arg) {
     struct max30102_fifo_data fifo_data;
-    char buf[256];  // Heap allocation demo
+    char buf[256];
+    struct pollfd pfd = { .fd = fd, .events = POLLIN };
 
     while (running) {
-        pthread_mutex_lock(&mutex);
-        if (ioctl(fd, MAX30102_IOC_READ_FIFO, &fifo_data) < 0) {
-            perror("Failed to read FIFO data");
+        if (poll(&pfd, 1, 1000) > 0 && (pfd.revents & POLLIN)) {
+            pthread_mutex_lock(&mutex);
+            if (ioctl(fd, MAX30102_IOC_READ_FIFO, &fifo_data) < 0) {
+                perror("Failed to read FIFO data");
+                pthread_mutex_unlock(&mutex);
+                break;
+            }
+            sprintf(buf, "FIFO: %d samples", fifo_data.len);
+            mq_send(mq, buf, strlen(buf) + 1, 0);
+            pthread_cond_signal(&cond);
             pthread_mutex_unlock(&mutex);
-            break;
         }
-        sprintf(buf, "FIFO: %d samples", fifo_data.len);  // Heap usage
-        mq_send(mq, buf, strlen(buf) + 1, 0);  // Send to queue
-        pthread_cond_signal(&cond);  // Signal main thread
-        pthread_mutex_unlock(&mutex);
-        sleep(1);  // Simulate
+        usleep(100000);  // Reduced sleep for better responsiveness
     }
     return NULL;
 }
@@ -64,8 +80,8 @@ void *fifo_thread(void *arg) {
 // Thread function to read temperature
 void *temp_thread(void *arg) {
     float temp;
-    static int static_var = 0;  // Static variable demo
-    int auto_var = 0;  // Auto (stack) variable
+    static int static_var = 0;
+    int auto_var = 0;
 
     while (running) {
         pthread_mutex_lock(&mutex);
@@ -84,12 +100,11 @@ void *temp_thread(void *arg) {
 }
 
 int main(int argc, char *argv[]) {
-    // Command line arguments demo
     if (argc > 1) {
         printf("Arg: %s\n", argv[1]);
     }
 
-    fd = open("/dev/max30102", O_RDWR | O_NONBLOCK);  // Non-blocking demo
+    fd = open("/dev/max30102", O_RDWR | O_NONBLOCK);
     if (fd < 0) {
         perror("Failed to open device");
         return 1;
@@ -108,7 +123,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Config as before
+    // Config
     uint8_t mode = 0x03;
     struct max30102_slot_config slot_config = { .slot = 1, .led = 2 };
     uint8_t fifo_config = 0x40;
@@ -124,14 +139,14 @@ int main(int argc, char *argv[]) {
     pthread_create(&fifo_tid, NULL, fifo_thread, NULL);
     pthread_create(&temp_tid, NULL, temp_thread, NULL);
 
-    // Fork demo: Child process
+    // Fork demo
     pid_t pid = fork();
-    if (pid == 0) {  // Child
+    if (pid == 0) {
         printf("Child PID: %d\n", getpid());
         char *args[] = {"echo", "Hello from exec", NULL};
-        execvp("echo", args);  // Exec family
+        execvp("echo", args);
         exit(0);
-    } else if (pid > 0) {  // Parent
+    } else if (pid > 0) {
         printf("Parent waiting for child %d\n", pid);
         wait(NULL);
     }
@@ -140,7 +155,7 @@ int main(int argc, char *argv[]) {
     char buf[256];
     while (running) {
         pthread_mutex_lock(&mutex);
-        pthread_cond_wait(&cond, &mutex);  // Wait for signal from thread
+        pthread_cond_wait(&cond, &mutex);
         mq_receive(mq, buf, 256, NULL);
         printf("Received from queue: %s\n", buf);
         pthread_mutex_unlock(&mutex);

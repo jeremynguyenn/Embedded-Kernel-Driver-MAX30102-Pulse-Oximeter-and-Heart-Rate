@@ -7,8 +7,8 @@
 #include <linux/gpio/consumer.h>
 #include <linux/miscdevice.h>
 #include <linux/device.h>
-#include <linux/wait.h>  // Added for blocking read
-#include <linux/debugfs.h>  // Added for debugfs
+#include <linux/wait.h>
+#include <linux/debugfs.h>
 
 /* MAX30102 Register Definitions */
 #define MAX30102_ADDRESS                0x57
@@ -42,7 +42,7 @@ enum max30102_interrupt_status {
     MAX30102_INT_DIE_TEMP_RDY = 1,
 };
 
-/* Added from datasheet: Sample Averaging Options */
+/* Sample Averaging Options */
 enum max30102_smp_ave {
     SMP_AVE_1 = 0,
     SMP_AVE_2 = 1,
@@ -77,13 +77,14 @@ struct max30102_data {
     struct mutex lock;
     struct work_struct work;
     struct gpio_desc *irq_gpio;
+    struct gpio_desc *reset_gpio;  // Added for reset GPIO
     struct miscdevice miscdev;
     uint32_t red_data[32];
     uint32_t ir_data[32];
     uint8_t data_len;
     bool fifo_full;
-    wait_queue_head_t wait_data_ready;  // Added for blocking read
-    struct dentry *debug_dir;  // Added for debugfs
+    wait_queue_head_t wait_data_ready;
+    struct dentry *debug_dir;
 };
 
 extern const struct file_operations max30102_fops;

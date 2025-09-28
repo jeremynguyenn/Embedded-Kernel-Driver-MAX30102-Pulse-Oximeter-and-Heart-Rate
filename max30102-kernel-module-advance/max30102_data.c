@@ -1,9 +1,37 @@
 #include <linux/delay.h>
-#include <linux/spinlock.h>  // Added for atomic operations
+#include <linux/spinlock.h>
 #include "max30102.h"
 
-/* Added spinlock for atomic FIFO access to prevent race conditions */
+/* Spinlock for atomic FIFO access to prevent race conditions */
 static DEFINE_SPINLOCK(fifo_spinlock);
+
+/**
+ * max30102_clear_fifo - Clear FIFO pointers
+ * @data: MAX30102 device data
+ * Returns: 0 on success, negative error code on failure
+ */
+static int max30102_clear_fifo(struct max30102_data *data)
+{
+    uint8_t value = 0x00;
+    int ret;
+
+    ret = max30102_write_reg(data, MAX30102_REG_FIFO_WRITE_POINTER, &value, 1);
+    if (ret) {
+        dev_err(&data->client->dev, "Failed to clear FIFO write pointer: %d\n", ret);
+        return ret;
+    }
+    ret = max30102_write_reg(data, MAX30102_REG_FIFO_READ_POINTER, &value, 1);
+    if (ret) {
+        dev_err(&data->client->dev, "Failed to clear FIFO read pointer: %d\n", ret);
+        return ret;
+    }
+    ret = max30102_write_reg(data, MAX30102_REG_OVERFLOW_COUNTER, &value, 1);
+    if (ret) {
+        dev_err(&data->client->dev, "Failed to clear FIFO overflow counter: %d\n", ret);
+        return ret;
+    }
+    return 0;
+}
 
 /**
  * max30102_read_fifo - Read FIFO data (Red and IR samples)
@@ -17,6 +45,7 @@ int max30102_read_fifo(struct max30102_data *data, uint32_t *red, uint32_t *ir, 
 {
     unsigned long flags;
     uint8_t ovf_counter;
+    int ret;
 
     if (!data->fifo_full) {
         dev_dbg(&data->client->dev, "No FIFO data available\n");
@@ -24,7 +53,11 @@ int max30102_read_fifo(struct max30102_data *data, uint32_t *red, uint32_t *ir, 
     }
 
     // Check overflow counter as per datasheet
-    max30102_read_reg(data, MAX30102_REG_OVERFLOW_COUNTER, &ovf_counter, 1);
+    ret = max30102_read_reg(data, MAX30102_REG_OVERFLOW_COUNTER, &ovf_counter, 1);
+    if (ret) {
+        dev_err(&data->client->dev, "Failed to read overflow counter: %d\n", ret);
+        return ret;
+    }
     if (ovf_counter > 0) {
         dev_warn(&data->client->dev, "FIFO overflow: %d samples lost\n", ovf_counter);
     }
@@ -36,8 +69,16 @@ int max30102_read_fifo(struct max30102_data *data, uint32_t *red, uint32_t *ir, 
     *len = data->data_len;
     data->fifo_full = false;
     spin_unlock_irqrestore(&fifo_spinlock, flags);
-    mutex_unlock(&data->lock);
 
+    // Auto-clear FIFO after reading
+    ret = max30102_clear_fifo(data);
+    if (ret) {
+        dev_err(&data->client->dev, "Failed to auto-clear FIFO: %d\n", ret);
+        mutex_unlock(&data->lock);
+        return ret;
+    }
+
+    mutex_unlock(&data->lock);
     return 0;
 }
 
@@ -50,7 +91,7 @@ int max30102_read_fifo(struct max30102_data *data, uint32_t *red, uint32_t *ir, 
 int max30102_read_temperature(struct max30102_data *data, float *temp)
 {
     uint8_t temp_int, temp_frac, status;
-    int ret, timeout = 10;  // Improved: Poll instead of fixed sleep, as per datasheet (~29ms)
+    int ret, timeout = 10;  // Poll instead of fixed sleep, as per datasheet (~29ms)
 
     ret = max30102_write_reg(data, MAX30102_REG_DIE_TEMP_CONFIG, &(uint8_t){0x01}, 1);
     if (ret) {
