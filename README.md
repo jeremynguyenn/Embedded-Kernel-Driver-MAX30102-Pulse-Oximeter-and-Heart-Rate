@@ -214,6 +214,7 @@ This diagram illustrates:
 - `max30102_core` integrates with Linux subsystems (I2C, GPIO, Misc Device, Input, Hwmon, Debugfs).
 - `max30102_user` interacts with the kernel via IOCTLs.
 - `max30102.dts` configures I2C and GPIO settings.
+<img width="2129" height="1494" alt="diagram-export-9-29-2025-10_55_08-PM" src="https://github.com/user-attachments/assets/f6cf5cb5-84da-4778-a66a-b3fab27ffcee" />
 
 ## Architecture Flow
 
