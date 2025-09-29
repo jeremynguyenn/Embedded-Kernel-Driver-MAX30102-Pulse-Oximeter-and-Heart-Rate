@@ -1,6 +1,6 @@
-# MAX30102 Sensor Driver for Raspberry Pi (RUN for file max30102-kernel-module-advance)
+# MAX30102 Sensor Driver for Raspberry Pi
 
-This project provides a Linux kernel module for the MAX30102 heart rate and SpO2 sensor, along with a user-space application to interact with the sensor. The driver supports I2C communication, interrupt handling, FIFO management, and IOCTL operations for configuration and data retrieval.
+This project provides a Linux kernel module for the MAX30102 heart rate and SpO2 sensor, integrated with a user-space application for seamless interaction. The driver supports I2C communication, interrupt handling, FIFO management, temperature reading, and IOCTL operations, leveraging Linux subsystems like input, hwmon, debugfs, sysfs, and regulator support for robust functionality.
 
 ## Table of Contents
 - [Installation](#installation)
@@ -12,7 +12,7 @@ This project provides a Linux kernel module for the MAX30102 heart rate and SpO2
 
 ## Installation
 
-To install the `max30102_driver` for the Raspberry Pi, follow these steps:
+To install the `max30102_driver` on a Raspberry Pi, follow these steps:
 
 ### Step 1: Navigate to the Project Directory
 Clone or copy the project files to a directory on your Raspberry Pi (e.g., `/home/pi/max30102_driver`). Ensure all source files (`max30102_*.c`, `max30102.h`, `max30102.dts`, `max30102_user.c`, `Makefile`) are present.
@@ -22,17 +22,17 @@ cd /home/pi/max30102_driver
 ```
 
 ### Step 2: Convert Device Tree Blob to Source
-Navigate to the `/boot` directory and convert the Raspberry Pi device tree blob (`.dtb`) file to a device tree source (`.dts`) file using the `dtc` command. Select the correct `.dtb` file for your Raspberry Pi model.
+Navigate to the `/boot` directory and convert the Raspberry Pi device tree blob (`.dtb`) to a device tree source (`.dts`) using the `dtc` command, selecting the appropriate `.dtb` file for your Raspberry Pi model.
 
 ```bash
 cd /boot
 dtc -I dtb -O dts -o bcm2710-rpi-3-b.dts bcm2710-rpi-3-b.dtb
 ```
 
-**Note**: Replace `bcm2710-rpi-3-b.dtb` with the appropriate `.dtb` file for your Raspberry Pi model (e.g., `bcm2711-rpi-4-b.dtb` for Raspberry Pi 4).
+**Note**: Replace `bcm2710-rpi-3-b.dtb` with the correct `.dtb` file (e.g., `bcm2711-rpi-4-b.dtb` for Raspberry Pi 4).
 
 ### Step 3: Modify the Device Tree
-Open the `.dts` file created in Step 2 (e.g., `bcm2710-rpi-3-b.dts`) and locate the `i2c1` node. Add the MAX30102 device tree overlay by including the contents of `max30102.dts`:
+Edit the `.dts` file (e.g., `bcm2710-rpi-3-b.dts`) and locate the `i2c1` node. Integrate the MAX30102 device tree overlay from `max30102.dts`:
 
 ```dts
 /dts-v1/;
@@ -55,39 +55,41 @@ Open the `.dts` file created in Step 2 (e.g., `bcm2710-rpi-3-b.dts`) and locate 
                 led2-current-mA = <6>;
                 interrupt-parent = <&gpio>;
                 interrupts = <17 IRQ_TYPE_EDGE_FALLING>;
+                vcc-supply = <&regulator_vcc>;
+                #io-channel-cells = <0>;
             };
         };
     };
 };
 ```
 
-Alternatively, you can apply the provided `max30102.dts` directly as an overlay (see [Device Tree Configuration](#device-tree-configuration)).
+Alternatively, apply `max30102.dts` directly as an overlay (see [Device Tree Configuration](#device-tree-configuration)).
 
 ### Step 4: Recompile and Apply Device Tree
-Recompile the modified `.dts` file back to `.dtb` and reboot the Raspberry Pi to apply the changes:
+Recompile the modified `.dts` file to `.dtb` and reboot the Raspberry Pi:
 
 ```bash
 dtc -I dts -O dtb -o bcm2710-rpi-3-b.dtb bcm2710-rpi-3-b.dts
 sudo reboot
 ```
 
-**Note**: Replace `bcm2710-rpi-3-b.dtb` and `bcm2710-rpi-3-b.dts` with your model's files.
+**Note**: Use the appropriate `.dtb` and `.dts` filenames for your Raspberry Pi model.
 
 ### Step 5: Build and Install the Driver
-Return to the project directory and build the kernel module using the provided `Makefile`:
+Return to the project directory and build the kernel module using the `Makefile`:
 
 ```bash
 cd /home/pi/max30102_driver
 make
 ```
 
-This generates `max30102_driver.ko`. Install the driver into the system:
+This compiles `max30102_core.o`, `max30102_i2c.o`, `max30102_interrupt.o`, `max30102_config.o`, `max30102_data.o`, and `max30102_ioctl.o` into `max30102_driver.ko`. Install the driver:
 
 ```bash
 sudo insmod max30102_driver.ko
 ```
 
-Verify the installation using:
+Verify installation:
 
 ```bash
 dmesg | grep max30102
@@ -112,7 +114,7 @@ Run the application:
 ./max30102_app
 ```
 
-To clean up generated files:
+Clean up generated files:
 
 ```bash
 make clean
@@ -120,7 +122,7 @@ make clean
 
 ## Device Tree Configuration
 
-The `max30102.dts` file defines the MAX30102 sensor on the I2C bus with interrupt and reset GPIOs. To apply the device tree overlay directly:
+The `max30102.dts` file configures the MAX30102 sensor on the I2C bus at address `0x57`, with interrupt GPIO (pin 17), reset GPIO (pin 18), regulator support, and hwmon integration. To apply the overlay directly:
 
 1. Compile the overlay:
 
@@ -134,31 +136,33 @@ dtc -@ -I dts -O dtb -o max30102.dtbo max30102.dts
 sudo dtoverlay max30102.dtbo
 ```
 
-3. To remove the overlay:
+3. Remove the overlay:
 
 ```bash
 sudo dtoverlay -r max30102
 ```
 
-**Note**: Ensure the I2C interface is enabled on your Raspberry Pi (`sudo raspi-config`, select "Interfacing Options" -> "I2C" -> "Enable").
+**Note**: Enable the I2C interface via `sudo raspi-config` ("Interfacing Options" -> "I2C" -> "Enable").
 
 ## Usage
 
-The driver exposes a misc device (`/dev/max30102`) that can be controlled via IOCTLs. The `max30102_user.c` application demonstrates:
-- Reading FIFO data (Red and IR samples) using `MAX30102_IOC_READ_FIFO`.
-- Reading die temperature using `MAX30102_IOC_READ_TEMP`.
-- Configuring the sensor mode, slots, FIFO, and SpO2 settings.
+The driver exposes a misc device (`/dev/max30102`) controlled via IOCTLs defined in `max30102.h`. The `max30102_user.c` application demonstrates:
+- Opening the device with `O_RDWR | O_NONBLOCK` and handling signals (SIGINT, SIGTERM, SIGUSR1).
+- Configuring sensor settings (mode, slots, FIFO, SpO2) using IOCTLs like `MAX30102_IOC_SET_MODE`, `MAX30102_IOC_SET_SLOT`, `MAX30102_IOC_SET_FIFO_CONFIG`, and `MAX30102_IOC_SET_SPO2_CONFIG`.
+- Reading FIFO data (Red and IR samples) with `MAX30102_IOC_READ_FIFO` in a joinable thread using `poll()` for efficient data availability checking.
+- Reading die temperature with `MAX30102_IOC_READ_TEMP` in a detached thread.
+- Implementing process management (`fork`, `execvp`), thread synchronization (mutex, condition variables), and IPC (message queue, pipe, FIFO, shared memory).
 
-Example commands in `max30102_user.c`:
-- Set SpO2 mode: `ioctl(fd, MAX30102_IOC_SET_MODE, &mode)` with `mode = 0x03`.
-- Read FIFO data: `ioctl(fd, MAX30102_IOC_READ_FIFO, &fifo_data)`.
+Example IOCTL commands in `max30102_user.c`:
+- Set SpO2 mode: `ioctl(fd, MAX30102_IOC_SET_MODE, &mode)` with `mode = MAX30102_MODE_SPO2`.
+- Read FIFO: `ioctl(fd, MAX30102_IOC_READ_FIFO, &fifo_data)`.
 - Read temperature: `ioctl(fd, MAX30102_IOC_READ_TEMP, &temp)`.
 
-The application uses threads to continuously read FIFO and temperature data, with `poll()` for efficient data availability checking.
+The driver supports heart rate and SpO2 calculations in `max30102_data.c`, reporting via the input subsystem (`ABS_HEART_RATE`, `ABS_SPO2`), and exposes sysfs attributes (`temperature`, `status`, `led_current`) for monitoring.
 
 ## UML Diagram
 
-Below is a UML class diagram representing the relationships between the main components of the MAX30102 driver and user application:
+Below is a UML class diagram illustrating the relationships between the MAX30102 driver components and user application:
 
 ```plaintext
 @startuml
@@ -167,15 +171,20 @@ package "Kernel Module" {
   [max30102_data] --> [max30102_ioctl]
   [max30102_data] --> [max30102_interrupt]
   [max30102_data] --> [max30102_config]
+  [max30102_data] --> [max30102_data] : FIFO/temp processing
   [max30102_data] --> [max30102_i2c]
   [max30102_core] --> [max30102.h]
   [max30102_ioctl] --> [max30102.h]
   [max30102_interrupt] --> [max30102.h]
   [max30102_config] --> [max30102.h]
+  [max30102_data] --> [max30102.h]
   [max30102_i2c] --> [max30102.h]
   [max30102_core] --> [I2C Subsystem]
   [max30102_core] --> [GPIO Subsystem]
   [max30102_core] --> [Misc Device]
+  [max30102_core] --> [Input Subsystem]
+  [max30102_core] --> [Hwmon Subsystem]
+  [max30102_core] --> [Debugfs]
 }
 
 package "Device Tree" {
@@ -199,17 +208,16 @@ package "User Space" {
 @enduml
 ```
 
-This diagram shows:
-- The kernel module components (`max30102_*.c`) depend on `max30102.h` for shared definitions.
-- `max30102_core` interacts with Linux subsystems (I2C, GPIO, Misc Device).
-- `max30102_user` communicates with the kernel module via IOCTLs.
-- `max30102.dts` configures the I2C device.
-<img width="1621" height="1362" alt="image" src="https://github.com/user-attachments/assets/0275422f-167b-4417-95a7-f3d0cc5a0bff" />
-
+This diagram illustrates:
+- `max30102.h` defines shared structures (`max30102_data`, `max30102_fifo_data`, `max30102_slot_config`), IOCTLs, and register macros.
+- `max30102_data` is central, used by all kernel components for FIFO and temperature data.
+- `max30102_core` integrates with Linux subsystems (I2C, GPIO, Misc Device, Input, Hwmon, Debugfs).
+- `max30102_user` interacts with the kernel via IOCTLs.
+- `max30102.dts` configures I2C and GPIO settings.
 
 ## Architecture Flow
 
-The MAX30102 driver architecture is modular, with clear separation of concerns across the source files. Below is a Mermaid flowchart illustrating the data flow and interactions:
+The MAX30102 driver architecture is modular, with clear separation of concerns. Below is a Mermaid flowchart depicting the data flow and interactions:
 
 ```mermaid
 graph TD
@@ -265,42 +273,42 @@ graph TD
 
 **Flow Description**:
 1. **User Space** (`max30102_user.c`):
-   - Opens `/dev/max30102` and uses IOCTLs to configure the sensor and read FIFO/temperature data.
-   - Uses `poll()` to wait for data availability, with threads for continuous monitoring and a message queue for IPC.
+   - Opens `/dev/max30102`, configures the sensor via IOCTLs, and reads FIFO/temperature data.
+   - Uses `poll()` for efficient data availability, threads for continuous monitoring, and IPC mechanisms (message queue, pipe, FIFO, shared memory) for data handling.
 
 2. **Kernel Space**:
-   - `max30102_core.c`: Registers the misc device, sets up IRQs, and initializes the sensor via `max30102_config.c`.
-   - `max30102_interrupt.c`: Processes FIFO full and other interrupts, storing data in buffers and signaling availability.
-   - `max30102_data.c`: Reads FIFO data with auto-clear and temperature data with polling.
-   - `max30102_ioctl.c`: Handles user-space IOCTLs for data retrieval and configuration.
-   - `max30102_config.c`: Configures sensor settings (mode, slots, FIFO, SpO2) and performs hardware/software reset.
-   - `max30102_i2c.c`: Manages low-level I2C communication with retries.
+   - `max30102_core.c`: Registers the misc device, manages IRQs (`max30102_irq_handler`), and initializes the sensor via `max30102_config.c`. Supports file operations (`max30102_fops`), sysfs attributes, input subsystem (`input_dev`), hwmon (`hwmon_dev`), and debugfs.
+   - `max30102_interrupt.c`: Handles interrupts (e.g., FIFO full, PPG ready) via a workqueue (`max30102_work_handler`), storing data in `max30102_data` buffers.
+   - `max30102_data.c`: Reads FIFO data with auto-clear (`max30102_clear_fifo`) and temperature (`max30102_read_temperature`), calculating heart rate and SpO2 using peak detection and calibration formulas.
+   - `max30102_ioctl.c`: Processes IOCTLs (`max30102_ioctl`, `max30102_compat_ioctl`) for user-space interaction, handling FIFO, temperature, mode, slot, and configuration settings.
+   - `max30102_config.c`: Initializes the sensor (`max30102_init_sensor`) with hardware/software reset and configures mode, slots, FIFO, and SpO2 settings.
+   - `max30102_i2c.c`: Manages I2C communication (`max30102_read_reg`, `max30102_write_reg`) with retries for reliability.
 
 3. **Device Tree** (`max30102.dts`):
-   - Configures the I2C address, interrupt GPIO, and reset GPIO for the MAX30102 sensor.
+   - Configures the MAX30102 at I2C address `0x57`, with interrupt GPIO (pin 17), reset GPIO (pin 18), and regulator support.
 
 4. **Hardware**:
-   - The MAX30102 sensor generates data, triggers interrupts, and communicates via I2C.
+   - The MAX30102 sensor generates Red/IR data, triggers interrupts, and communicates via I2C.
 
 5. **Build System** (`Makefile`):
-   - Compiles the kernel module by linking all `max30102_*.o` files into `max30102_driver.ko`.
+   - Compiles and links `max30102_*.o` into `max30102_driver.ko` for kernel module deployment.
 
 **Data Flow**:
-- The sensor generates data, triggering interrupts handled by `max30102_interrupt.c`.
-- Data is stored in `max30102_data.c` buffers, with auto-clear after reading.
-- User-space (`max30102_user.c`) polls for data and retrieves it via IOCTLs through `max30102_ioctl.c`.
-- `max30102_config.c` and `max30102_i2c.c` handle sensor initialization and communication, respectively.
+- Sensor data triggers interrupts, handled by `max30102_interrupt.c`, storing Red/IR samples in `max30102_data` buffers.
+- `max30102_data.c` processes FIFO data, calculates heart rate/SpO2, and reports via input subsystem.
+- User-space (`max30102_user.c`) retrieves data via IOCTLs (`max30102_ioctl.c`), with `poll()` ensuring efficient data access.
+- `max30102_config.c` and `max30102_i2c.c` handle sensor setup and communication, respectively.
 
 ## Files
-- `max30102.h`: Header file with register definitions, IOCTLs, and `max30102_data` structure.
-- `max30102_core.c`: Main driver logic, including probe, remove, and file operations.
-- `max30102_i2c.c`: I2C read/write functions.
-- `max30102_interrupt.c`: Interrupt handling and workqueue processing.
-- `max30102_config.c`: Sensor initialization and configuration.
-- `max30102_data.c`: FIFO data and temperature reading with auto-clear.
-- `max30102_ioctl.c`: IOCTL handling for user-space interaction.
-- `max30102.dts`: Device tree overlay for I2C and GPIO configuration.
-- `max30102_user.c`: User-space application for sensor interaction.
-- `Makefile`: Build script for the kernel module.
+- `max30102.h`: Defines register macros, IOCTLs (`MAX30102_IOC_*`), structures (`max30102_data`, `max30102_fifo_data`, `max30102_slot_config`), and function prototypes.
+- `max30102_core.c`: Implements main driver logic, including probe (`max30102_probe`), file operations (`max30102_fops`), sysfs attributes, and subsystem integrations (input, hwmon, debugfs).
+- `max30102_i2c.c`: Provides I2C read/write functions (`max30102_read_reg`, `max30102_write_reg`) with retry logic.
+- `max30102_interrupt.c`: Manages interrupts (`max30102_irq_handler`, `max30102_work_handler`) for FIFO, PPG, ALC overflow, and temperature events.
+- `max30102_config.c`: Handles sensor initialization (`max30102_init_sensor`) and configuration (`max30102_set_mode`, `max30102_set_slot`, `max30102_set_fifo_config`, `max30102_set_spo2_config`).
+- `max30102_data.c`: Processes FIFO data (`max30102_read_fifo`) with auto-clear and temperature (`max30102_read_temperature`), including heart rate/SpO2 calculations.
+- `max30102_ioctl.c`: Implements IOCTL handlers (`max30102_ioctl`, `max30102_compat_ioctl`) for user-space configuration and data retrieval.
+- `max30102.dts`: Configures I2C, GPIOs, and regulator for the MAX30102 sensor.
+- `max30102_user.c`: User-space application for interacting with the driver, demonstrating IOCTLs, threads, IPC, and process management.
+- `Makefile`: Builds the kernel module (`max30102_driver.ko`) and supports cleanup.
 
-This driver provides a robust interface for interacting with the MAX30102 sensor, suitable for heart rate and SpO2 monitoring applications on Raspberry Pi.
+This driver provides a robust, modular interface for the MAX30102 sensor, enabling heart rate and SpO2 monitoring on Raspberry Pi with advanced Linux kernel integration.
