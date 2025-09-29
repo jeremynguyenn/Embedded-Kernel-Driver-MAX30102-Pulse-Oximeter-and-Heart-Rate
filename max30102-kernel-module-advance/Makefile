@@ -6,7 +6,8 @@ all:
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-	rm -f *.ko *.mod.c *.o Module.symvers modules.order
+	rm -f *.ko *.mod.c *.o *.mod.o Module.symvers modules.order .*.cmd
+	rm -rf .tmp_versions
 
 install: all
 	sudo insmod max30102_driver.ko

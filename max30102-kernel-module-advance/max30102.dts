@@ -18,6 +18,8 @@
                 led2-current-mA = <6>;
                 interrupt-parent = <&gpio>;
                 interrupts = <17 IRQ_TYPE_EDGE_FALLING>;
+                vcc-supply = <&regulator_vcc>;  // Added regulator support
+                #io-channel-cells = <0>;  // For hwmon integration
             };
         };
     };

@@ -6,14 +6,23 @@
  * max30102_open - Open function for device file
  * @inode: Inode structure
  * @file: File structure
- * Returns: 0 on success
+ * Returns: 0 on success, negative error code on failure
  */
 static int max30102_open(struct inode *inode, struct file *file)
 {
     struct miscdevice *miscdev = file->private_data;
     struct max30102_data *data = container_of(miscdev, struct max30102_data, miscdev);
+    int ret;
+
+    if (!data) {
+        return -EINVAL;
+    }
     file->private_data = data;
-    init_waitqueue_head(&data->wait_data_ready);  // Init wait queue
+    ret = init_waitqueue_head(&data->wait_data_ready);  // Init wait queue
+    if (ret < 0) {
+        dev_err(&data->client->dev, "Failed to init waitqueue: %d\n", ret);
+        return ret;
+    }
     dev_info(&data->client->dev, "Device opened by process %d\n", current->pid);  // Process management
     return 0;
 }
@@ -28,19 +37,25 @@ static int max30102_open(struct inode *inode, struct file *file)
 static long max30102_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
     struct max30102_data *data = file->private_data;
-    struct max30102_fifo_data fifo_data;
-    struct max30102_slot_config slot_config;
-    uint8_t mode, config;
-    float temp;
-    int ret;
+    struct max30102_fifo_data fifo_data = {0};
+    struct max30102_slot_config slot_config = {0};
+    uint8_t mode = 0, config = 0;
+    float temp = 0.0f;
+    int ret = 0;
+
+    if (!data) {
+        return -EINVAL;
+    }
 
     mutex_lock(&data->lock);
 
     switch (cmd) {
     case MAX30102_IOC_READ_FIFO:
         ret = max30102_read_fifo(data, fifo_data.red, fifo_data.ir, &fifo_data.len);
-        if (ret)
+        if (ret < 0) {
+            dev_err(&data->client->dev, "Failed to read FIFO: %d\n", ret);
             goto unlock;
+        }
         if (copy_to_user((void __user *)arg, &fifo_data, sizeof(fifo_data))) {
             dev_err(&data->client->dev, "Failed to copy FIFO data to user\n");
             ret = -EFAULT;
@@ -50,8 +65,10 @@ static long max30102_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 
     case MAX30102_IOC_READ_TEMP:
         ret = max30102_read_temperature(data, &temp);
-        if (ret)
+        if (ret < 0) {
+            dev_err(&data->client->dev, "Failed to read temperature: %d\n", ret);
             goto unlock;
+        }
         if (copy_to_user((void __user *)arg, &temp, sizeof(temp))) {
             dev_err(&data->client->dev, "Failed to copy temperature to user\n");
             ret = -EFAULT;
@@ -66,6 +83,10 @@ static long max30102_ioctl(struct file *file, unsigned int cmd, unsigned long ar
             goto unlock;
         }
         ret = max30102_set_mode(data, mode);
+        if (ret < 0) {
+            dev_err(&data->client->dev, "Failed to set mode: %d\n", ret);
+            goto unlock;
+        }
         break;
 
     case MAX30102_IOC_SET_SLOT:
@@ -80,6 +101,10 @@ static long max30102_ioctl(struct file *file, unsigned int cmd, unsigned long ar
             goto unlock;
         }
         ret = max30102_set_slot(data, slot_config.slot, slot_config.led);
+        if (ret < 0) {
+            dev_err(&data->client->dev, "Failed to set slot: %d\n", ret);
+            goto unlock;
+        }
         break;
 
     case MAX30102_IOC_SET_FIFO_CONFIG:
@@ -89,6 +114,10 @@ static long max30102_ioctl(struct file *file, unsigned int cmd, unsigned long ar
             goto unlock;
         }
         ret = max30102_set_fifo_config(data, config);
+        if (ret < 0) {
+            dev_err(&data->client->dev, "Failed to set FIFO config: %d\n", ret);
+            goto unlock;
+        }
         break;
 
     case MAX30102_IOC_SET_SPO2_CONFIG:
@@ -98,6 +127,10 @@ static long max30102_ioctl(struct file *file, unsigned int cmd, unsigned long ar
             goto unlock;
         }
         ret = max30102_set_spo2_config(data, config);
+        if (ret < 0) {
+            dev_err(&data->client->dev, "Failed to set SpO2 config: %d\n", ret);
+            goto unlock;
+        }
         break;
 
     default:
@@ -105,8 +138,6 @@ static long max30102_ioctl(struct file *file, unsigned int cmd, unsigned long ar
         ret = -ENOTTY;
         goto unlock;
     }
-
-    ret = 0;
 
 unlock:
     mutex_unlock(&data->lock);

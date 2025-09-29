@@ -15,6 +15,7 @@ int max30102_write_reg(struct max30102_data *data, uint8_t reg, uint8_t *buf, ui
     uint8_t *send_buf;  // Dynamic alloc for flexibility
     int ret, retry = 3;  // Added retry for I2C errors (best practice)
 
+    if (!data || !buf) return -EINVAL;
     if (len > 32) {
         dev_err(&data->client->dev, "Invalid buffer length: %d, max is 32\n", len);
         return -EINVAL;
@@ -61,6 +62,7 @@ int max30102_read_reg(struct max30102_data *data, uint8_t reg, uint8_t *buf, uin
     struct i2c_msg msgs[2];
     int ret, retry = 3;
 
+    if (!data || !buf) return -EINVAL;
     if (len > 32) {
         dev_err(&data->client->dev, "Invalid read length: %d, max is 32\n", len);
         return -EINVAL;
